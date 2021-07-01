@@ -2,7 +2,7 @@ ROOT_DIR="data/july_05th/smallroom_cam/"
 # directory containing the data
 IMG_W=504  # image width (do not set too large)
 IMG_H=378  # image height (do not set too large)
-NUM_EPOCHS=20  # number of epochs to train (depending on how many images there are,
+NUM_EPOCHS=30  # number of epochs to train (depending on how many images there are,
 # 20~30 might be enough)
 EXP="exp_small_room"  # name of the experience (arbitrary)
 

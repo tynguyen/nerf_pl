@@ -46,7 +46,6 @@ def sample_pdf(bins, weights, N_importance, det=False, eps=1e-5):
     inds_sampled = torch.stack([below, above], -1).view(N_rays, 2*N_importance)
     cdf_g = torch.gather(cdf, 1, inds_sampled).view(N_rays, N_importance, 2)
     bins_g = torch.gather(bins, 1, inds_sampled).view(N_rays, N_importance, 2)
-
     denom = cdf_g[...,1]-cdf_g[...,0]
     denom[denom<eps] = 1 # denom equals 0 means a bin has weight 0, in which case it will not be sampled
                          # anyway, therefore any value for it is fine (set to 1 here)
