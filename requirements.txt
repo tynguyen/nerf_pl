@@ -16,3 +16,7 @@ pyglet
 # for point cloud
 plyfile
 open3d
+
+# For images to pose using LLFF
+scikit-image
+imageio
