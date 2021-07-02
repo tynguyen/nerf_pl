@@ -10,11 +10,14 @@ modules = [
 
 # If nvcc is available, add the CUDA extension
 if CUDA_HOME:
+    print(f"[Info] CUDA_HOME is available. Intalling CUDA version of searchsorted")
     modules.append(
         CUDAExtension('torchsearchsorted.cuda',
                       ['src/cuda/searchsorted_cuda_wrapper.cpp',
                        'src/cuda/searchsorted_cuda_kernel.cu'])
     )
+else:
+    print(f"[Info] CUDA_HOME is NOT available. Intalling CPU version of searchsorted")
 
 tests_require = [
     'pytest',

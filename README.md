@@ -20,6 +20,10 @@ Official implementation: [nerf](https://github.com/bmild/nerf) .. Reference pyto
 
 * Multi-gpu training: Training on 8 GPUs finishes within 1 hour for the synthetic dataset!
 * [Colab](#mortar_board-colab) notebooks to allow easy usage!
+Note: images should be stored under a subfolder `images` of the <base_dir> when you run
+```
+python imgs2poses.py <base_dir>
+```
 * [Reconstruct](#ribbon-mesh) **colored** mesh!
 * [Mixed Reality](https://youtu.be/S5phWFTs2iM) in Unity!
 * [REAL TIME volume rendering](https://youtu.be/w9qTbVzCdWk) in Unity!
@@ -36,7 +40,7 @@ Official implementation: [nerf](https://github.com/bmild/nerf) .. Reference pyto
 <a href="https://www.youtube.com/playlist?list=PLDV2CyUo4q-K02pNEyDr7DYpTQuka3mbV">
 <img src="https://user-images.githubusercontent.com/11364490/80913471-d5781080-8d7f-11ea-9f72-9d68402b8271.png">
 </a>
-   
+
 # :computer: Installation
 
 ## Hardware
@@ -51,7 +55,7 @@ Official implementation: [nerf](https://github.com/bmild/nerf) .. Reference pyto
 * Python libraries
     * Install core requirements by `pip install -r requirements.txt`
     * Install `torchsearchsorted` by `cd torchsearchsorted` then `pip install .`
-    
+
 # :key: Training
 
 Please see each subsection for training on different datasets. Available training datasets:
@@ -63,7 +67,7 @@ Please see each subsection for training on different datasets. Available trainin
 ## Blender
 <details>
   <summary>Steps</summary>
-   
+
 ### Data download
 
 Download `nerf_synthetic.zip` from [here](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1)
@@ -86,13 +90,15 @@ These parameters are chosen to best mimic the training settings in the original 
 
 NOTE: the above configuration doesn't work for some scenes like `drums`, `ship`. In that case, consider increasing the `batch_size` or change the `optimizer` to `radam`. I managed to train on all scenes with these modifications.
 
+NOTE: If there is any issue, make sure that you have installed torchsearchsorted as mentioned above!!
+
 You can monitor the training process by `tensorboard --logdir logs/` and go to `localhost:6006` in your browser.
 </details>
 
 ## LLFF
 <details>
   <summary>Steps</summary>
-   
+
 ### Data download
 
 Download `nerf_llff_data.zip` from [here](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1)
@@ -119,7 +125,7 @@ You can monitor the training process by `tensorboard --logdir logs/` and go to `
 ## Your own data
 <details>
   <summary>Steps</summary>
-   
+
 1. Install [COLMAP](https://github.com/colmap/colmap) following [installation guide](https://colmap.github.io/install.html)
 2. Prepare your images in a folder (around 20 to 30 for forward facing, and 40 to 50 for 360 inward-facing)
 3. Clone [LLFF](https://github.com/Fyusion/LLFF) and run `python img2poses.py $your-images-folder`
@@ -134,7 +140,7 @@ Download the pretrained models and training logs in [release](https://github.com
 ## Comparison with other repos
 
 |           | training GPU memory in GB | Speed (1 step) |
-| :---:     |  :---:     | :---:   | 
+| :---:     |  :---:     | :---:   |
 | [Original](https://github.com/bmild/nerf)  |  8.5 | 0.177s |
 | [Ref pytorch](https://github.com/yenchenlin/nerf-pytorch)  |  6.0 | 0.147s |
 | This repo | 3.2 | 0.12s |
