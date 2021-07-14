@@ -102,6 +102,7 @@ def read_cameras_text(path):
                 cameras[camera_id] = Camera(id=camera_id, model=model,
                                             width=width, height=height,
                                             params=params)
+    print(f"[Info] read_cameras_text(.) return {len(cameras.keys())} cameras!")
     return cameras
 
 

@@ -83,7 +83,7 @@ class NeRFSystem(LightningModule):
     def configure_optimizers(self):
         self.optimizer = get_optimizer(self.hparams, self.models)
         scheduler = get_scheduler(self.hparams, self.optimizer)
-        
+
         return [self.optimizer], [scheduler]
 
     def train_dataloader(self):
@@ -99,7 +99,7 @@ class NeRFSystem(LightningModule):
                           num_workers=4,
                           batch_size=1, # validate one image (H*W rays) at a time
                           pin_memory=True)
-    
+
     def training_step(self, batch, batch_nb):
         log = {'lr': get_learning_rate(self.optimizer)}
         rays, rgbs = self.decode_batch(batch)
@@ -123,7 +123,7 @@ class NeRFSystem(LightningModule):
         results = self(rays)
         log = {'val_loss': self.loss(results, rgbs)}
         typ = 'fine' if 'rgb_fine' in results else 'coarse'
-    
+
         if batch_nb == 0:
             W, H = self.hparams.img_wh
             img = results[f'rgb_{typ}'].view(H, W, 3).cpu()

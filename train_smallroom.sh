@@ -6,7 +6,7 @@ NUM_EPOCHS=30  # number of epochs to train (depending on how many images there a
 # 20~30 might be enough)
 EXP="exp_small_room"  # name of the experience (arbitrary)
 
-python train.py \
+python3 train.py \
    --dataset_name llff \
    --root_dir "$ROOT_DIR" \
    --N_importance 64 --img_wh $IMG_W $IMG_H \

@@ -5,33 +5,32 @@ import imageio
 import skimage.transform
 
 from llff.poses.colmap_wrapper import run_colmap
-import llff.poses.colmap_read_model as read_model
+from llff.poses.colmap_read_model import read_model
 import pdb
 
 
-def load_colmap_data(realdir):
+def load_colmap_data(realdir, ext='.txt'):
 
-    camerasfile = os.path.join(realdir, "sparse/0/cameras.bin")
-    camdata = read_model.read_cameras_binary(camerasfile)
-
+    camdata, imdata, pts3d = read_model(f"{realdir}sparse/0", ext)
     # cam = camdata[camdata.keys()[0]]
     list_of_keys = list(camdata.keys())
+
+    # Assume all cameras are the same! So we just pick one set of camera intrinsics parameters
     cam = camdata[list_of_keys[0]]
-    print("Cameras", len(cam))
 
     h, w, f = cam.height, cam.width, cam.params[0]
     # w, h, f = factor * w, factor * h, factor * f
     hwf = np.array([h, w, f]).reshape([3, 1])
 
-    imagesfile = os.path.join(realdir, "sparse/0/images.bin")
-    imdata = read_model.read_images_binary(imagesfile)
 
     w2c_mats = []
     bottom = np.array([0, 0, 0, 1.0]).reshape([1, 4])
 
     names = [imdata[k].name for k in imdata]
-    print("Images #", len(names))
+    print(f"[Info] No of images : {len(names)}")
     perm = np.argsort(names)
+
+    # Retrieve world to Opencv cam's transformations
     for k in imdata:
         im = imdata[k]
         R = im.qvec2rotmat()
@@ -39,6 +38,7 @@ def load_colmap_data(realdir):
         m = np.concatenate([np.concatenate([R, t], 1), bottom], 0)
         w2c_mats.append(m)
 
+    # Convert to OpenCV cam to world transformations by inversion
     w2c_mats = np.stack(w2c_mats, 0)
     c2w_mats = np.linalg.inv(w2c_mats)
 
@@ -47,9 +47,7 @@ def load_colmap_data(realdir):
         [poses, np.tile(hwf[..., np.newaxis], [1, 1, poses.shape[-1]])], 1
     )
 
-    points3dfile = os.path.join(realdir, "sparse/0/points3D.bin")
-    pts3d = read_model.read_points3d_binary(points3dfile)
-
+    # Return 3x5 x num_cameras
     # must switch to [-u, r, -t] from [r, -u, t], NOT [r, u, -t]
     poses = np.concatenate(
         [
@@ -66,24 +64,38 @@ def load_colmap_data(realdir):
 
 
 def save_poses(basedir, poses, pts3d, perm):
+
     pts_arr = []
     vis_arr = []
-    for k in pts3d:
-        pts_arr.append(pts3d[k].xyz)
+    """
+    Example of a Point3D point:
+    Point3D(id=16643, xyz=array([ 2.7732559 , -1.90301521,  4.80502174]),
+            rgb=array([115, 114, 121]), error=0.3636110852479526, image_ids=array([188, 196, 192, 176, 124, 148, 144, 160]),
+            point2D_idxs=array([2176, 2430, 1935, 1697,  945,  885,  907,  947])
+    """
+    # We don't need to use every point
+    for k in pts3d: # pts3d: {pt3d_index:Point3D}
+        print(f"[Info]--> Point {k}th")
         cams = [0] * poses.shape[-1]
+        # Evaluate if the current point is good
+        pts_is_valid = True
         for ind in pts3d[k].image_ids:
             if len(cams) < ind - 1:
                 print(
                     "ERROR: the correct camera poses for current points cannot be accessed"
                 )
-                return
-            cams[ind - 1] = 1
+                pts_is_valid = False
+                break
+            else:
+                cams[ind - 1] = 1
+        if not pts_is_valid:
+            continue
+        pts_arr.append(pts3d[k].xyz)
         vis_arr.append(cams)
 
     pts_arr = np.array(pts_arr)
     vis_arr = np.array(vis_arr)
     print("Points", pts_arr.shape, "Visibility", vis_arr.shape)
-
     zvals = np.sum(
         -(pts_arr[:, np.newaxis, :].transpose([2, 0, 1]) - poses[:3, 3:4, :])
         * poses[:3, 2:3, :],
@@ -301,8 +313,8 @@ def load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     return poses, bds, imgs
 
 
-def gen_poses(basedir, match_type, factors=None):
-    files_needed = ["{}.bin".format(f) for f in ["cameras", "images", "points3D"]]
+def gen_poses(basedir, match_type, ext='.txt', factors=None):
+    files_needed = ["{}{}".format(f, ext) for f in ["cameras", "images", "points3D"]]
     if os.path.exists(os.path.join(basedir, "sparse/0")):
         files_had = os.listdir(os.path.join(basedir, "sparse/0"))
     else:
@@ -315,7 +327,7 @@ def gen_poses(basedir, match_type, factors=None):
 
     print("Post-colmap")
 
-    poses, pts3d, perm = load_colmap_data(basedir)
+    poses, pts3d, perm = load_colmap_data(basedir, ext)
 
     save_poses(basedir, poses, pts3d, perm)
 
