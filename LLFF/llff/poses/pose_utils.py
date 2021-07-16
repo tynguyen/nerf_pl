@@ -9,7 +9,7 @@ from llff.poses.colmap_read_model import read_model
 import pdb
 
 
-def load_colmap_data(realdir, ext='.txt'):
+def load_colmap_data(realdir, ext=".txt"):
 
     camdata, imdata, pts3d = read_model(f"{realdir}sparse/0", ext)
     # cam = camdata[camdata.keys()[0]]
@@ -22,14 +22,12 @@ def load_colmap_data(realdir, ext='.txt'):
     # w, h, f = factor * w, factor * h, factor * f
     hwf = np.array([h, w, f]).reshape([3, 1])
 
-
     w2c_mats = []
     bottom = np.array([0, 0, 0, 1.0]).reshape([1, 4])
 
     names = [imdata[k].name for k in imdata]
     print(f"[Info] No of images : {len(names)}")
     perm = np.argsort(names)
-
     # Retrieve world to Opencv cam's transformations
     for k in imdata:
         im = imdata[k]
@@ -74,7 +72,7 @@ def save_poses(basedir, poses, pts3d, perm):
             point2D_idxs=array([2176, 2430, 1935, 1697,  945,  885,  907,  947])
     """
     # We don't need to use every point
-    for k in pts3d: # pts3d: {pt3d_index:Point3D}
+    for k in pts3d:  # pts3d: {pt3d_index:Point3D}
         print(f"[Info]--> Point {k}th")
         cams = [0] * poses.shape[-1]
         # Evaluate if the current point is good
@@ -313,7 +311,7 @@ def load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     return poses, bds, imgs
 
 
-def gen_poses(basedir, match_type, ext='.txt', factors=None):
+def gen_poses(basedir, match_type, ext=".txt", factors=None):
     files_needed = ["{}{}".format(f, ext) for f in ["cameras", "images", "points3D"]]
     if os.path.exists(os.path.join(basedir, "sparse/0")):
         files_had = os.listdir(os.path.join(basedir, "sparse/0"))
