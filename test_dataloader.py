@@ -15,31 +15,58 @@ from utils.colmap_read_write import getPCLfromRGB_D
 import matplotlib.pyplot as plt
 
 def show_pcl_list(pcl_list):
-    # visualizer = o3d.visualization.Visualizer()
-    # visualizer.create_window()
-
-    # visualizer.add_geometries(pcl_list)
-    # visualizer.destroy_window()
     o3d.visualization.draw_geometries(pcl_list)
+
+def get_pcl_from_rgbd_in_opengl_frame(rgb, depth, K):
+    """Get a point cloud in the OpenGL camera frame from RGBD
+
+    Args:
+        rgb ([HxW x 3]): rgb image
+        depth ([HxW]): depth image
+        K ([3x3]): intrinsics parameters
+    """
+    # Get 3D points in the OpenCV camera's coord
+    depth = depth.squeeze()[None]  # 1 x H x W
+    img_h, img_w = rgb.shape[:2]
+    # Note that in opengl convention, y is up, x is to the right. Therefore,
+    # y start from img_h-1 to 0 from the upper left corner.
+    xs, ys = np.meshgrid(
+        np.linspace(0, img_w - 1, img_w), np.linspace(img_h - 1, 0, img_h),
+    )
+    xs = xs.reshape(1, img_h, img_w)
+    ys = ys.reshape(1, img_h, img_w)
+
+    # Unproject (OpenGL camera's coordinate). Negate depth value because Z of the camera is backward
+    xys = np.vstack((-xs * depth, -ys * depth, -depth))#, np.ones(depth.shape)))
+    xys = xys.reshape(3, -1)
+    xy_c0 = np.matmul(np.linalg.inv(K), xys)
+
+    # Visualize the points
+    pcl_points = xy_c0[:3, :].T
+    pcl_cam = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pcl_points))
+    return pcl_cam
 
 class CustomLLFFDataset(LLFFDataset):
     def read_meta(self):
+        self.image_paths = sorted(glob.glob(os.path.join(self.root_dir, 'images/*')))
+                        # load full resolution image then resize
         poses_bounds = np.load(os.path.join(self.root_dir,
                                             'poses_bounds.npy')) # (N_images, 17)
 
+        self.image_names = [name.split('/')[-1] for name in self.image_paths]
+
         image_names_file = os.path.join(self.root_dir,
                     'image_names_corresponding_to_poses_bounds.txt')
-        with open(image_names_file, 'r') as fin:
-            image_names = fin.readlines() # (N_images)
-            image_names = [name.strip() for name in image_names]
-        self.image_paths = sorted(glob.glob(os.path.join(self.root_dir, 'images/*')))
-                        # load full resolution image then resize
-        self.image_names = [name.split('/')[-1] for name in self.image_paths]
-        # Make sure image_names and self.image_names are identical
-        total_diffs = 0
-        for i in range(len(image_names)):
-            total_diffs += image_names[i] != self.image_names[i]
-        assert total_diffs == 0 , "[Error] image_names list must be identical to self.image_names!"
+        if os.path.exists(image_names_file):
+            with open(image_names_file, 'r') as fin:
+                image_names = fin.readlines() # (N_images)
+                image_names = [name.strip() for name in image_names]
+            # Make sure image_names and self.image_names are identical
+            total_diffs = 0
+            for i in range(len(image_names)):
+                total_diffs += image_names[i] != self.image_names[i]
+            assert total_diffs == 0 , "[Error] image_names list must be identical to self.image_names!"
+
         self.depth_paths = sorted(glob.glob(os.path.join(self.root_dir, 'depths/*')))
                         # load full resolution image then resize
 
@@ -56,24 +83,31 @@ class CustomLLFFDataset(LLFFDataset):
 
         self.focal *= self.img_wh[0]/W
 
-        self.cv_intrinsics = np.array([
-            [self.focal,    0,       self.img_wh[0]/2],
-            [0         , self.focal, self.img_wh[1]/2],
-            [0         ,    0,            0]])
-
+        # Camera intrinsics (OpenGL frame)
+        # In OpenGL frame, Z is flipped so we need to negate focal value
+        self.gl_intrinsics = np.array([
+            [-self.focal,    0,       self.img_wh[0]/2],
+            [0         , -self.focal, self.img_wh[1]/2],
+            [0         ,    0,            1]])
+        print(f"[Info] Intrinsics: \n {self.gl_intrinsics}")
         # Step 2: correct poses
         # Original poses has rotation in form "down right back", change to "right up back"
         # See https://github.com/bmild/nerf/issues/34
         self.poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
                 # (N_images, 3, 4) exclude H, W, focal
 
-    def get_pcls_from_rgbds(self):
+    def get_pcls_from_rgbds(self, max_no_pcls=1e10):
         """Get pointclouds from RGB + Depth images
         """
         pcl_list = []
         rgbd_images = read_rgbd_images(self.root_dir, self.image_names, rgb_ext='.jpg', depth_ext='.png')
 
         for i, image_name in enumerate(self.image_names):
+            if i >= max_no_pcls:
+                break
+            # if image_name != "nodeID_8_angleID_0.jpg":
+            #     continue
+            print(f"[Info]--> Frame {image_name}")
             rgb, depth = rgbd_images[image_name]
             # plt.subplot(121)
             # plt.imshow(depth, cmap="jet")
@@ -82,18 +116,24 @@ class CustomLLFFDataset(LLFFDataset):
             # plt.subplot(122)
             # plt.imshow(depth, cmap="jet")
             # plt.show()
-            cvCam2W_T = self.poses[i] # 3x4
-            cvCam2W_T = np.vstack([cvCam2W_T, np.array([0,0,0,1])])
-            o3d_rgbd_pcl = getPCLfromRGB_D(rgb, depth, self.cv_intrinsics)
+            glCam2W_T = self.poses[i] # 3x4
+            glCam2W_T = np.vstack([glCam2W_T, np.array([0,0,0,1])])
 
-            # Transform this pcl
-            o3d_rgbd_pcl.transform(cvCam2W_T)
-            # pcl_list.append(o3d_rgbd_pcl)
+            # Point cloud. Note that we cannot use Open3D pcl from RGBD anymore because our camera now is
+            # OpenGL model.
+            # o3d_rgbd_pcl = getPCLfromRGB_D(rgb, depth, self.cv_intrinsics) # Wrong!
+            o3d_rgbd_pcl = get_pcl_from_rgbd_in_opengl_frame(rgb, depth, self.gl_intrinsics)
 
             # Camera pose
             o3d_cam_pose = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
-            o3d_cam_pose.transform(cvCam2W_T)
+
+            # Transform to the world
+            print(f"[Info] Transform from OpenGL cam to world:\n {glCam2W_T}")
+            o3d_rgbd_pcl.transform(glCam2W_T)
+            o3d_cam_pose.transform(glCam2W_T)
+            pcl_list.append(o3d_rgbd_pcl)
             pcl_list.append(o3d_cam_pose)
+
         return pcl_list
 
 def main():
