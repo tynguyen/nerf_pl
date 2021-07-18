@@ -239,6 +239,8 @@ class LLFFDataset(Dataset):
                 img = img.view(3, -1).permute(1, 0) # (h*w, 3) RGB
                 self.all_rgbs += [img]
 
+                # rays_o: (H*W, 3), the origin of the rays in world coordinate
+                # rays_d: (H*W, 3), the normalized direction of the rays in world coordinate
                 rays_o, rays_d = get_rays(self.directions, c2w) # both (h*w, 3)
                 if not self.spheric_poses:
                     near, far = 0, 1
@@ -249,6 +251,8 @@ class LLFFDataset(Dataset):
                                      # See https://github.com/bmild/nerf/issues/34
                 else:
                     near = self.bounds.min()
+                    #TODO: in case not using spheric_poses, increase this magic number (8)
+                    # Because in the Replica dataset, min_d can be 0.4 while max_d can be up to 4.5
                     far = min(8 * near, self.bounds.max()) # focus on central object only
 
                 self.all_rays += [torch.cat([rays_o, rays_d,
@@ -268,6 +272,7 @@ class LLFFDataset(Dataset):
             if self.split.endswith('train'): # test on training set
                 self.poses_test = self.poses
             elif not self.spheric_poses:
+                #TODO: get understand this magic number
                 focus_depth = 3.5 # hardcoded, this is numerically close to the formula
                                   # given in the original repo. Mathematically if near=1
                                   # and far=infinity, then this number will converge to 4

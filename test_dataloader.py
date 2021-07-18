@@ -95,14 +95,6 @@ class CustomLLFFDataset(LLFFDataset):
             [0         ,    0,            1]])
         print(f"[Info] GL cam Intrinsics: \n {self.gl_intrinsics}")
 
-        # Camera intrinsics (Centered OpenGL frame)
-        self.centered_gl_intrinsics = np.array([
-            [-self.focal,    0,       self.img_wh[0]/2],
-            [0         , -self.focal, self.img_wh[1]/2],
-            [0         ,    0,            1]])
-        print(f"[Info] Centered GL cam Intrinsics: \n {self.centered_gl_intrinsics}")
-
-
         # Step 2: correct poses
         # Original poses has rotation in form "down right back", change to "right up back"
         # See https://github.com/bmild/nerf/issues/34
@@ -180,7 +172,7 @@ def test_step2_in_LLFFDataset(kwargs):
 def test_step3_in_LLFFDataset(kwargs):
     train_dataset = CustomLLFFDataset(split='train', **kwargs)
     pcl_list = train_dataset.get_pcls_from_rgbds_in_opengl_frame(train_dataset.poses,\
-        train_dataset.centered_gl_intrinsics,
+        train_dataset.gl_intrinsics,
         train_dataset.depth_scale_factor,
         max_no_pcls=1e10)
     show_pcl_list(pcl_list, train_dataset.depth_scale_factor)

@@ -33,6 +33,7 @@ def get_rays(directions, c2w):
 
     Inputs:
         directions: (H, W, 3) precomputed ray directions in camera coordinate
+            each direction is (x, y, 1) where we egnore z value because it does not matter for a direction vector
         c2w: (3, 4) transformation matrix from camera coordinate to world coordinate
 
     Outputs:
@@ -41,7 +42,7 @@ def get_rays(directions, c2w):
     """
     # Rotate ray directions from camera coordinate to the world coordinate
     rays_d = directions @ c2w[:, :3].T # (H, W, 3) # Instead of having c2w @ p, we do a transpose here, just for shaping rays_d
-    rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+    rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True) # 1 unit 3-D vectors
     # The origin of all rays is the camera origin in world coordinate
     rays_o = c2w[:, 3].expand(rays_d.shape) # (H, W, 3)
 
