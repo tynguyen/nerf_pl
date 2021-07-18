@@ -34,9 +34,9 @@ def average_poses(poses):
         pose_avg: (3, 4) the average pose
     """
     # 1. Compute the center
-    center = poses[..., 3].mean(0) # (3)
+    center = poses[..., 3].mean(0) # (3) # average (x,y,z) transition values
 
-    # 2. Compute the z axis
+    # 2. Compute the z axis. Normalize it to make it an unit vector
     z = normalize(poses[..., 2].mean(0)) # (3)
 
     # 3. Compute axis y' (no need to normalize as it's not the final output)
@@ -48,6 +48,8 @@ def average_poses(poses):
     # 5. Compute the y axis (as z and x are normalized, y is already of norm 1)
     y = np.cross(z, x) # (3)
 
+    # The everage pose of size 3x4 will be basically the average transformation
+    # from camera poses to the world
     pose_avg = np.stack([x, y, z, center], 1) # (3, 4)
 
     return pose_avg
@@ -55,7 +57,8 @@ def average_poses(poses):
 
 def center_poses(poses):
     """
-    Center the poses so that we can use NDC.
+    Center the poses so that we can use NDC. The transition after this transformation
+        does not necessary have unit norm.
     See https://github.com/bmild/nerf/issues/34
 
     Inputs:
@@ -65,7 +68,6 @@ def center_poses(poses):
         poses_centered: (N_images, 3, 4) the centered poses
         pose_avg: (3, 4) the average pose
     """
-
     pose_avg = average_poses(poses) # (3, 4)
     pose_avg_homo = np.eye(4)
     pose_avg_homo[:3] = pose_avg # convert to homogeneous coordinate for faster computation
@@ -74,6 +76,8 @@ def center_poses(poses):
     poses_homo = \
         np.concatenate([poses, last_row], 1) # (N_images, 4, 4) homogeneous coordinate
 
+    # Transform raw poses (OpenGL camera poses) to the avg_pose coord system
+    # T_cam_to_avgpose = T_world_to_avgpose @ T_cam_to_world
     poses_centered = np.linalg.inv(pose_avg_homo) @ poses_homo # (N_images, 4, 4)
     poses_centered = poses_centered[:, :3] # (N_images, 3, 4)
 

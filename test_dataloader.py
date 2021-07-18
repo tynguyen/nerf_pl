@@ -1,7 +1,8 @@
-"""[Test LLFF dataloader and the data saved in poses_bounds.npy]
+"""[Test LLFFDataset with the data saved in poses_bounds.npy]
 @Author: Ty Nguyen
 @Email: tynguyen@seas.upenn.edu
 """
+from datasets.llff import center_poses
 import os, glob
 import open3d as o3d
 from typing import overload
@@ -14,7 +15,10 @@ from utils.colmap_read_write import read_rgbd_images
 from utils.colmap_read_write import getPCLfromRGB_D
 import matplotlib.pyplot as plt
 
-def show_pcl_list(pcl_list):
+def show_pcl_list(pcl_list, coord_scale_factor=1):
+    # Draw the origin
+    origin_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=3/coord_scale_factor)
+    pcl_list.append(origin_coord)
     o3d.visualization.draw_geometries(pcl_list)
 
 def get_pcl_from_rgbd_in_opengl_frame(rgb, depth, K):
@@ -89,15 +93,46 @@ class CustomLLFFDataset(LLFFDataset):
             [-self.focal,    0,       self.img_wh[0]/2],
             [0         , -self.focal, self.img_wh[1]/2],
             [0         ,    0,            1]])
-        print(f"[Info] Intrinsics: \n {self.gl_intrinsics}")
+        print(f"[Info] GL cam Intrinsics: \n {self.gl_intrinsics}")
+
+        # Camera intrinsics (Centered OpenGL frame)
+        self.centered_gl_intrinsics = np.array([
+            [-self.focal,    0,       self.img_wh[0]/2],
+            [0         , -self.focal, self.img_wh[1]/2],
+            [0         ,    0,            1]])
+        print(f"[Info] Centered GL cam Intrinsics: \n {self.centered_gl_intrinsics}")
+
+
         # Step 2: correct poses
         # Original poses has rotation in form "down right back", change to "right up back"
         # See https://github.com/bmild/nerf/issues/34
-        self.poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
+        poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
                 # (N_images, 3, 4) exclude H, W, focal
+        self.poses_after_step2 = poses.copy()
 
-    def get_pcls_from_rgbds(self, max_no_pcls=1e10):
-        """Get pointclouds from RGB + Depth images
+        # Transform from cam2world to cam2avg_pose where avg_pose is the average transformation
+        # of cam2world transformations
+        self.poses, self.pose_avg = center_poses(poses)
+        distances_from_center = np.linalg.norm(self.poses[..., 3], axis=1)
+        val_idx = np.argmin(distances_from_center) # choose val image as the closest to
+                                                   # center image
+
+        # Step 3: correct scale so that the nearest depth is at a little more than 1.0
+        # See https://github.com/bmild/nerf/issues/34
+        near_original = self.bounds.min()
+        self.depth_scale_factor = near_original*0.75 # 0.75 is the default parameter
+                                          # the nearest depth is at 1/0.75=1.33
+        self.bounds /= self.depth_scale_factor
+        # Scale depth values
+        self.poses[..., 3] /= self.depth_scale_factor
+
+    def get_pcls_from_rgbds_in_opengl_frame(self, poses, cam_intrinsics, depth_scale_factor=1, max_no_pcls=1e10):
+        """Get pointclouds from RGB + Depth images in OpenGL frame
+            with the camera frame convention (right, up, backward)
+            @Args:
+                - cam_intrinsics (np.ndarray 3x3): cam intrinsics
+                - depth_scale_factor (float): scaling factor for the depth. This is the value used
+                    to scale the near, far distance values
         """
         pcl_list = []
         rgbd_images = read_rgbd_images(self.root_dir, self.image_names, rgb_ext='.jpg', depth_ext='.png')
@@ -111,21 +146,21 @@ class CustomLLFFDataset(LLFFDataset):
             rgb, depth = rgbd_images[image_name]
             # plt.subplot(121)
             # plt.imshow(depth, cmap="jet")
-            depth = depth / 1000.0
+            depth = depth / 1000.0 / depth_scale_factor
             depth = depth.astype(np.float32)
             # plt.subplot(122)
             # plt.imshow(depth, cmap="jet")
             # plt.show()
-            glCam2W_T = self.poses[i] # 3x4
+            glCam2W_T = poses[i]
             glCam2W_T = np.vstack([glCam2W_T, np.array([0,0,0,1])])
 
             # Point cloud. Note that we cannot use Open3D pcl from RGBD anymore because our camera now is
             # OpenGL model.
             # o3d_rgbd_pcl = getPCLfromRGB_D(rgb, depth, self.cv_intrinsics) # Wrong!
-            o3d_rgbd_pcl = get_pcl_from_rgbd_in_opengl_frame(rgb, depth, self.gl_intrinsics)
+            o3d_rgbd_pcl = get_pcl_from_rgbd_in_opengl_frame(rgb, depth, cam_intrinsics)
 
             # Camera pose
-            o3d_cam_pose = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+            o3d_cam_pose = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.15/depth_scale_factor)
 
             # Transform to the world
             print(f"[Info] Transform from OpenGL cam to world:\n {glCam2W_T}")
@@ -136,6 +171,25 @@ class CustomLLFFDataset(LLFFDataset):
 
         return pcl_list
 
+
+def test_step2_in_LLFFDataset(kwargs):
+    train_dataset = CustomLLFFDataset(split='train', **kwargs)
+    pcl_list = train_dataset.get_pcls_from_rgbds_in_opengl_frame(train_dataset.poses_after_step2, train_dataset.gl_intrinsics)
+    show_pcl_list(pcl_list)
+
+def test_step3_in_LLFFDataset(kwargs):
+    train_dataset = CustomLLFFDataset(split='train', **kwargs)
+    pcl_list = train_dataset.get_pcls_from_rgbds_in_opengl_frame(train_dataset.poses,\
+        train_dataset.centered_gl_intrinsics,
+        train_dataset.depth_scale_factor,
+        max_no_pcls=1e10)
+    show_pcl_list(pcl_list, train_dataset.depth_scale_factor)
+
+
+tests_dict = {  "step_2": test_step2_in_LLFFDataset,
+                "step_3": test_step3_in_LLFFDataset,
+                }
+
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--data_root", default="data/replica/room_0")
@@ -144,19 +198,16 @@ def main():
                         help='whether images are taken in spheric poses (for llff)')
     argparser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')
+    argparser.add_argument('--test_name', type=str, default="step_2",
+                        help='Name of the test. There are different tests corresponding to different steps in the dataset')
 
     args = argparser.parse_args()
     kwargs = {'root_dir': args.data_root,
                 'img_wh': tuple(args.img_wh)}
     kwargs['spheric_poses'] = args.spheric_poses
     kwargs['val_num'] = args.num_gpus
-    train_dataset = CustomLLFFDataset(split='train', **kwargs)
 
-    # train_dataloader = DataLoader(train_dataset, shuffle=False,
-    #                         num_workers=1, batch_size=1,pin_memory=True)
-
-    pcl_list = train_dataset.get_pcls_from_rgbds()
-    show_pcl_list(pcl_list)
+    tests_dict[args.test_name](kwargs)
 
 if __name__=="__main__":
     main()
