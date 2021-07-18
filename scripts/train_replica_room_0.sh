@@ -11,7 +11,7 @@ python3 train.py \
    --root_dir "$ROOT_DIR" \
    --N_importance 256 --img_wh $IMG_W $IMG_H \
    --spheric_poses --use_disp \
-   --num_epochs $NUM_EPOCHS --batch_size 2048 \
+   --num_epochs $NUM_EPOCHS --batch_size 1024 \
    --optimizer adam --lr 5e-4 \
    --lr_scheduler cosine \
    --exp_name $EXP
