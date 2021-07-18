@@ -214,6 +214,8 @@ class LLFFDataset(Dataset):
         self.bounds /= scale_factor
         # Scale depth values
         self.poses[..., 3] /= scale_factor
+        # End of step 3
+
 
         # ray directions for all pixels, same for all images (same H, W, focal)
         self.directions = \
