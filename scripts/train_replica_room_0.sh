@@ -9,7 +9,7 @@ EXP="exp_replica_room_0_spheric"  # name of the experience (arbitrary)
 python3 train.py \
    --dataset_name llff \
    --root_dir "$ROOT_DIR" \
-   --N_importance 256 --img_wh $IMG_W $IMG_H \
+   --N_importance 128 --img_wh $IMG_W $IMG_H \
    --spheric_poses --use_disp \
    --num_epochs $NUM_EPOCHS --batch_size 1024 \
    --optimizer adam --lr 5e-4 \

@@ -69,6 +69,8 @@ class CustomLLFFDataset(LLFFDataset):
             total_diffs = 0
             for i in range(len(image_names)):
                 total_diffs += image_names[i] != self.image_names[i]
+                if image_names[i] != self.image_names[i]:
+                    breakpoint()
             assert total_diffs == 0 , "[Error] image_names list must be identical to self.image_names!"
 
         self.depth_paths = sorted(glob.glob(os.path.join(self.root_dir, 'depths/*')))
