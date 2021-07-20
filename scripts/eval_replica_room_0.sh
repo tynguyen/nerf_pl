@@ -5,7 +5,7 @@ IMG_W=640  # image width (do not set too large)
 IMG_H=360  # image height (do not set too large)
 
 EXP="exp_replica_room_0_spheric"  # name of the experience (arbitrary)
-EPOCH="1"  # name of the experience (arbitrary)
+EPOCH="9"  # name of the experience (arbitrary)
 
 
 python eval.py \
