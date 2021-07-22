@@ -111,6 +111,7 @@ class NeRFSystem(LightningModule):
             psnr_ = psnr(results[f'rgb_{typ}'], rgbs)
             log['train/psnr'] = psnr_
 
+
         return {'loss': loss,
                 'progress_bar': {'train_psnr': psnr_},
                 'log': log

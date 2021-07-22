@@ -310,7 +310,10 @@ class LLFFDataset(Dataset):
                                               self.focal, 1.0, rays_o, rays_d)
             else:
                 near = self.bounds.min()
-                far = min(8 * near, self.bounds.max())
+
+                # TODO: for now, make sure that we always sample the end point
+                far = self.bounds.max()*1.05
+                # far = min(8 * near, self.bounds.max())
 
             rays = torch.cat([rays_o, rays_d,
                               near*torch.ones_like(rays_o[:, :1]),
