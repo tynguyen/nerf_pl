@@ -11,7 +11,7 @@ jupyter
 PyMCubes
 pycollada
 trimesh
-pyglet
+pyglet=1.5.15
 
 # for point cloud
 plyfile
