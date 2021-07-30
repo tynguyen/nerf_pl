@@ -1,11 +1,11 @@
 # directory containing the data
-ROOT_DIR="data/replica/room_0"
+ROOT_DIR="data/replica/room_0_array"
 EXP_DIR="ckpts"
 IMG_W=640  # image width (do not set too large)
 IMG_H=360  # image height (do not set too large)
 
-EXP="exp_replica_room_0"  # name of the experience (arbitrary)
-EPOCH="7"  # name of the experience (arbitrary)
+EXP="replica_room_0_array"  # name of the experience (arbitrary)
+EPOCH="29"  # name of the experience (arbitrary)
 
 
 python eval.py \

@@ -1,10 +1,10 @@
-ROOT_DIR="data/replica/room_0"
+ROOT_DIR="data/replica/room_0_array"
 # directory containing the data
 IMG_W=640  # image width (do not set too large)
 IMG_H=360  # image height (do not set too large)
 NUM_EPOCHS=30  # number of epochs to train (depending on how many images there are,
 # 20~30 might be enough)
-EXP="exp_replica_room_0"  # name of the experience (arbitrary)
+EXP="replica_room_0_array"  # name of the experience (arbitrary)
 
 python3 train.py \
    --dataset_name llff \
