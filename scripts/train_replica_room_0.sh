@@ -5,7 +5,6 @@ IMG_H=360  # image height (do not set too large)
 NUM_EPOCHS=30  # number of epochs to train (depending on how many images there are,
 # 20~30 might be enough)
 EXP="replica_room_0_array"  # name of the experience (arbitrary)
-
 python3 train.py \
    --dataset_name llff \
    --root_dir "$ROOT_DIR" \

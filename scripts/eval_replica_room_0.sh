@@ -11,4 +11,5 @@ EPOCH="29"  # name of the experience (arbitrary)
 python eval.py \
    --root_dir "$ROOT_DIR" \
    --dataset_name llff --scene_name room_0 \
+   --exp_name $EXP \
    --img_wh ${IMG_W} ${IMG_H} --N_importance 64 --ckpt_path ${EXP_DIR}/${EXP}/epoch=${EPOCH}.ckpt \
