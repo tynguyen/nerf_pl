@@ -22,15 +22,16 @@ from metrics import *
 # pytorch-lightning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.logging import TestTubeLogger
+from pytorch_lightning.loggers.test_tube import TestTubeLogger
 
 
 class NeRFSystem(LightningModule):
-    def __init__(self, hparams):
+    def __init__(self, opts):
         super(NeRFSystem, self).__init__()
-        self.hparams = hparams
-
-        self.loss = loss_dict[hparams.loss_type]()
+        # for key in opts.keys():
+        #     self.hparams[key] = opts[key]
+        self.hparams.update(vars(opts))
+        self.loss = loss_dict[self.hparams.loss_type]()
 
         self.embedding_xyz = Embedding(3, 10)  # 10 is the default number
         self.embedding_dir = Embedding(3, 4)  # 4 is the default number
@@ -38,7 +39,7 @@ class NeRFSystem(LightningModule):
 
         self.nerf_coarse = NeRF()
         self.models = [self.nerf_coarse]
-        if hparams.N_importance > 0:
+        if self.hparams.N_importance > 0:
             self.nerf_fine = NeRF()
             self.models += [self.nerf_fine]
 
@@ -113,14 +114,22 @@ class NeRFSystem(LightningModule):
         log = {"lr": get_learning_rate(self.optimizer)}
         rays, rgbs = self.decode_batch(batch)
         results = self(rays)
-        log["train/loss"] = loss = self.loss(results, rgbs)
+        loss = self.loss(results, rgbs)
+        log["train/loss"] = loss.detach()
         typ = "fine" if "rgb_fine" in results else "coarse"
+        self.logger.experiment.add_scalar(
+            "train/loss", log["train/loss"].item(), self.global_step
+        )
 
         with torch.no_grad():
             psnr_ = psnr(results[f"rgb_{typ}"], rgbs)
             log["train/psnr"] = psnr_
 
-        return {"loss": loss, "progress_bar": {"train_psnr": psnr_}, "log": log}
+        return {
+            "loss": loss,
+            "progress_bar": {"train_psnr": psnr_.detach()},
+            "log": log,
+        }
 
     def validation_step(self, batch, batch_nb):
         rays, rgbs = self.decode_batch(batch)
@@ -129,7 +138,9 @@ class NeRFSystem(LightningModule):
         results = self(rays)
         log = {"val_loss": self.loss(results, rgbs)}
         typ = "fine" if "rgb_fine" in results else "coarse"
-
+        self.logger.experiment.add_scalar(
+            "val/loss", log["val_loss"].item(), self.global_step
+        )
         if batch_nb == 0:
             W, H = self.hparams.img_wh
             img = results[f"rgb_{typ}"].view(H, W, 3).cpu()
@@ -158,7 +169,7 @@ if __name__ == "__main__":
     hparams = get_opts()
     system = NeRFSystem(hparams)
     checkpoint_callback = ModelCheckpoint(
-        filepath=os.path.join(f"ckpts/{hparams.exp_name}", "{epoch:d}"),
+        dirpath=os.path.join(f"ckpts/{hparams.exp_name}", "{epoch:d}"),
         monitor="val/loss",
         mode="min",
         save_top_k=5,
@@ -170,17 +181,17 @@ if __name__ == "__main__":
 
     trainer = Trainer(
         max_epochs=hparams.num_epochs,
-        checkpoint_callback=checkpoint_callback,
+        checkpoint_callback=True,
+        callbacks=[checkpoint_callback],
         resume_from_checkpoint=hparams.ckpt_path,
         logger=logger,
-        early_stop_callback=None,
         weights_summary=None,
         progress_bar_refresh_rate=1,
         gpus=hparams.num_gpus,
         distributed_backend="ddp" if hparams.num_gpus > 1 else None,
         num_sanity_val_steps=1,
         benchmark=True,
-        profiler=hparams.num_gpus == 1,
+        profiler="simple" if hparams.num_gpus == 1 else None,
     )
 
     trainer.fit(system)
