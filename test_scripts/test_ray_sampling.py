@@ -15,6 +15,35 @@ from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import proj3d
 
 
+def stratified_uniform_sampling(
+    rays: torch.Tensor, N_samples: int = 64
+) -> torch.Tensor:
+    # Decompose the inputs
+    N_rays = rays.shape[0]
+    rays_o, rays_d = rays[:, 0:3], rays[:, 3:6]  # both (N_rays, 3)
+    near, far = rays[:, 6:7], rays[:, 7:8]  # both (N_rays, 1)
+
+    # Sample depth points
+    z_steps = torch.linspace(0, 1, N_samples, device=rays.device)  # (N_samples)
+    z_vals = near * (1 - z_steps) + far * z_steps
+
+    z_vals = z_vals.expand(N_rays, N_samples)
+
+    z_vals_mid = 0.5 * (
+        z_vals[:, :-1] + z_vals[:, 1:]
+    )  # (N_rays, N_samples-1) interval mid points
+    # get intervals between samples
+    upper = torch.cat([z_vals_mid, z_vals[:, -1:]], -1)
+    lower = torch.cat([z_vals[:, :1], z_vals_mid], -1)
+    perturb_rand = torch.rand(z_vals.shape, device=rays.device)
+    z_vals = lower + (upper - lower) * perturb_rand
+
+    xyz_coarse_sampled = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * z_vals.unsqueeze(
+        2
+    )  # (N_rays, N_samples, 3)
+    return xyz_coarse_sampled.view(-1, 3)
+
+
 class Arrow3D(FancyArrowPatch):
     def __init__(self, xs, ys, zs, *args, **kwargs):
         FancyArrowPatch.__init__(self, (0, 0), (0, 0), *args, **kwargs)
@@ -39,6 +68,18 @@ def prepare_data(hparams):
         kwargs["use_NDC"] = not hparams.no_NDC
     train_dataset = dataset(split="train", **kwargs)
     return train_dataset
+
+
+def visual_points(ax: mplot3d.Axes3D, points: torch.Tensor, colors: np.ndarray) -> None:
+    """ Visualize points
+    @param ax: matplotlib axes
+    @param points: (N, 3)
+    @param colors: (N, 3)
+    """
+    points = points.numpy()
+    ax.scatter(
+        points[:, 0], points[:, 1], points[:, 2], alpha=0.3, marker="s", s=20, c=colors
+    )
 
 
 def visual_rays(ax: plt.axes, rays: torch.Tensor, colors: np.ndarray = None) -> None:
@@ -68,6 +109,8 @@ def visual_rays(ax: plt.axes, rays: torch.Tensor, colors: np.ndarray = None) -> 
     # Get the near and far
     near = near.numpy()
     far = far.numpy()
+    # Add
+    directions = directions * (far - near)
 
     # Plot the rays
     # Plot origins
@@ -127,11 +170,17 @@ def test_ray_sampling(hparams: NamedTuple):
         ]  # Limit to 100 lines
         print(f"[Info] cam {i+1}th| totally {len(rays)} rays")
         perm = torch.randperm(rays.size(0))
-        idx = perm[:20]
+        idx = perm[:5]
         rays = rays[idx]
         colors = np.tile(color, (rays.size(0), 1))
         visual_rays(ax, rays, colors)
         print(f"[Info] cam {i+1}th| Display {len(rays)} rays")
+
+        # Sample N_sample points per ray
+        xyz_sampled = stratified_uniform_sampling(rays, hparams.N_samples)
+        print(f"[Info] cam {i+1}th| sampled {hparams.N_samples} points")
+        colors = np.tile(color, (xyz_sampled.size(0), 1))
+        visual_points(ax, xyz_sampled, colors)
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
@@ -150,5 +199,6 @@ if __name__ == "__main__":
     hparams.no_NDC = True  # Use NDC
     hparams.root_dir = ROOT_DIR
     hparams.img_wh = (IMG_W, IMG_H)
+    hparams.N_samples = 10
 
     test_ray_sampling(hparams)
