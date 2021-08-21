@@ -1,14 +1,14 @@
 import os, sys
 from typing import NamedTuple
-from opt import get_opts
 import torch
 from collections import defaultdict
 
 from torch.utils.data import DataLoader
-from datasets import dataset_dict
+from nerf_pl.opt import get_opts
+from nerf_pl.datasets import dataset_dict
+from nerf_pl.utils import *
 
 # optimizer, scheduler, visualization
-from utils import *
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from matplotlib.patches import FancyArrowPatch

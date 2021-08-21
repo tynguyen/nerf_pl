@@ -112,8 +112,6 @@ def scale_and_center_rays(
     rays_o = rays_o * scale
     near = near * scale
     far = far * scale
-    # TODO: remove
-    # rays_d = rays_d * scale
     nearest_points = rays_o + near * rays_d  # (N_rays, 3)
     farthest_points = rays_o + far * rays_d  # (N_rays, 3)
     points = torch.cat([nearest_points, farthest_points], 0)  # (2*N_rays, 3)
@@ -126,13 +124,12 @@ def scale_and_center_rays(
         avg_point = avg_point.view(1, 3)
         assert torch.abs(avg_point).max() <= 1.0, "avg_point should be within [-1,1]"
 
-    # Center points
-    # TODO: - avg_point here?
+    # Center points by shifting their origins rays_o by avg_point
+    rays[:, 0:3] = rays_o - avg_point
+    # Shift near and far accordingly
     rays[:, 6:7] = near - avg_point[0, -1]
     rays[:, 7:8] = far - avg_point[0, -1]
 
-    rays[:, 0:3] = rays_o - avg_point
-    # TODO: remove
     return rays, avg_point, scale
 
 
