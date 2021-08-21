@@ -87,6 +87,55 @@ def center_poses(poses):
     return poses_centered, np.linalg.inv(pose_avg_homo)
 
 
+def scale_and_center_rays(
+    rays: torch.Tensor, scale: float = None, avg_point: torch.Tensor = None
+) -> torch.Tensor:
+    """
+    Scale and then center rays so that xyz coordinates of points in every ray are within [-1,1].
+    Note that the avg_point is the average of the points AFTER the scaling.
+    Inputs:
+        rays: (N_rays, 8)
+        scale: float, the scale to apply to the points. Default to be None --> calculate it
+        avg_point: (3) the average point of the SCALED 3D points. Default to be None --> calculate it
+    Outputs:
+        points_centered: (N_points, 3) the scaled, centered 3D points
+    """
+    N_rays = rays.shape[0]
+    rays_o, rays_d = rays[:, 0:3], rays[:, 3:6]  # both (N_rays, 3)
+    near, far = rays[:, 6:7], rays[:, 7:8]  # both (N_rays, 1)
+
+    # Scale the points
+    if scale is None:
+        max_abs_rays_o_dim = torch.max(torch.abs(rays_o))
+        scale = 1.0 / (max_abs_rays_o_dim + torch.max(far))
+
+    rays_o = rays_o * scale
+    near = near * scale
+    far = far * scale
+    # TODO: remove
+    # rays_d = rays_d * scale
+    nearest_points = rays_o + near * rays_d  # (N_rays, 3)
+    farthest_points = rays_o + far * rays_d  # (N_rays, 3)
+    points = torch.cat([nearest_points, farthest_points], 0)  # (2*N_rays, 3)
+    if avg_point is None:
+        print(
+            f"[Warn] {__file__}: avg_point is not given. A calculation of this point is performed! Make sure that this avg_point is consistent across train and test"
+        )
+        avg_point = points.mean(0)
+    else:
+        avg_point = avg_point.view(1, 3)
+        assert torch.abs(avg_point).max() <= 1.0, "avg_point should be within [-1,1]"
+
+    # Center points
+    # TODO: - avg_point here?
+    rays[:, 6:7] = near - avg_point[0, -1]
+    rays[:, 7:8] = far - avg_point[0, -1]
+
+    rays[:, 0:3] = rays_o - avg_point
+    # TODO: remove
+    return rays, avg_point, scale
+
+
 def create_spiral_poses(radii, focus_depth, n_poses=120):
     """
     Computes poses that follow a spiral path for rendering purpose.
@@ -176,18 +225,32 @@ class LLFFDataset(Dataset):
         spheric_poses=False,
         val_num=1,
         use_NDC: bool = True,
+        normalize_sampled_points: bool = False,
+        center_3dpoints: torch.Tensor = None,
+        rays_scale_factor: float = None,
     ):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)
-        use_NDC: whether to use NDC or not. This only affects when spheric_poses is False
         val_num: number of val images (used for multigpu training, validate same image for all gpus)
+        use_NDC: whether to use NDC or not. This only affects when spheric_poses is False
+        normalize_sample_points: whether to normalize sample points to [-1, 1] without using NDC
+        center_3dpoints: the average ray origin. This is used to shift rays so that the average sampled points is within [-1, 1]
+        rays_scale_factor: the scale factor for rays. This is used to scale rays so that the average sampled points is within [-1, 1]
         """
         self.root_dir = root_dir
         self.split = split
         self.img_wh = img_wh
         self.spheric_poses = spheric_poses
         self.use_NDC = use_NDC
+        self.normalize_sampled_points = normalize_sampled_points
+        assert (
+            not self.use_NDC or not self.normalize_sampled_points
+        ), "NDC and normalize_sampled_points cannot be used together!"
+        if self.normalize_sampled_points:
+            self.center_3dpoints = torch.Tensor(center_3dpoints)
+            self.rays_scale_factor = rays_scale_factor
+
         self.val_num = max(1, val_num)  # at least 1
         self.define_transforms()
 
@@ -225,16 +288,17 @@ class LLFFDataset(Dataset):
         distances_from_center = np.linalg.norm(self.poses[..., 3], axis=1)
         val_idx = np.argmin(distances_from_center)  # choose val image as the closest to
         # center image
-
         # Step 3: correct scale so that the nearest depth is at a little more than 1.0
         # See https://github.com/bmild/nerf/issues/34
-        near_original = self.bounds.min()
-        scale_factor = near_original * 0.75  # 0.75 is the default parameter
-        # the nearest depth is at 1/0.75=1.33
-        self.bounds /= scale_factor
-        # Scale depth values
-        self.poses[..., 3] /= scale_factor
-        # End of step 3
+        # TODO: apply this to sound_nerf
+        if self.use_NDC:
+            near_original = self.bounds.min()
+            scale_factor = near_original * 0.75  # 0.75 is the default parameter
+            # the nearest depth is at 1/0.75=1.33
+            self.bounds /= scale_factor
+            # Scale depth values
+            self.poses[..., 3] /= scale_factor
+            # End of step 3
 
         # ray directions for all pixels, same for all images (same H, W, focal)
         self.directions = get_ray_directions(
@@ -275,10 +339,10 @@ class LLFFDataset(Dataset):
                     near = self.bounds.min()
                     # TODO: in case not using spheric_poses, increase this magic number (8)
                     # Because in the Replica dataset, min_d can be 0.4 while max_d can be up to 4.5
+                    # TODO: remove 10 if the scene's dimension is wider than 10m
                     far = min(
-                        8 * near, self.bounds.max()
+                        8 * near, self.bounds.max(), 10
                     )  # focus on central object only
-
                 self.all_rays += [
                     torch.cat(
                         [
@@ -293,6 +357,20 @@ class LLFFDataset(Dataset):
 
             self.all_rays = torch.cat(self.all_rays, 0)  # ((N_images-1)*h*w, 8)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # ((N_images-1)*h*w, 3)
+
+            # Normalize the coordinate of 3D points
+            if self.normalize_sampled_points:
+                (
+                    self.all_rays,
+                    center_3dpoints,
+                    rays_scale_factor,
+                ) = scale_and_center_rays(
+                    self.all_rays,
+                    scale=self.rays_scale_factor,
+                    avg_point=self.center_3dpoints,
+                )
+                self.center_3dpoints = center_3dpoints
+                self.rays_scale_factor = rays_scale_factor
 
         elif self.split == "val":
             print("val image is", self.image_paths[val_idx])
@@ -334,17 +412,19 @@ class LLFFDataset(Dataset):
                 c2w = torch.FloatTensor(self.poses_test[idx])
 
             rays_o, rays_d = get_rays(self.directions, c2w)
-            if not self.spheric_poses:
+            if not self.spheric_poses and self.use_NDC:
                 near, far = 0, 1
                 rays_o, rays_d = get_ndc_rays(
                     self.img_wh[1], self.img_wh[0], self.focal, 1.0, rays_o, rays_d
                 )
             else:
                 near = self.bounds.min()
-
-                # TODO: for now, make sure that we always sample the end point
-                far = self.bounds.max() * 1.05
-                # far = min(8 * near, self.bounds.max())
+                # TODO: in case not using spheric_poses, increase this magic number (8)
+                # Because in the Replica dataset, min_d can be 0.4 while max_d can be up to 4.5
+                # TODO: remove 10 if the scene's dimension is wider than 10m
+                far = min(
+                    8 * near, self.bounds.max(), 10
+                )  # focus on central object only
 
             rays = torch.cat(
                 [
@@ -355,6 +435,10 @@ class LLFFDataset(Dataset):
                 ],
                 1,
             )  # (h*w, 8)
+            if self.normalize_sampled_points:
+                (rays, _, _,) = scale_and_center_rays(
+                    rays, scale=self.rays_scale_factor, avg_point=self.center_3dpoints,
+                )
 
             sample = {"rays": rays, "c2w": c2w}
 

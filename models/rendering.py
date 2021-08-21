@@ -227,6 +227,9 @@ def render_rays(
         2
     )  # (N_rays, N_samples, 3)
 
+    assert torch.all(
+        torch.abs(xyz_coarse_sampled) <= 1
+    ), "[Error] Sampled 3D points must be within [-1,1]"
     if test_time:
         weights_coarse = inference(
             model_coarse,

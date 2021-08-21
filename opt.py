@@ -1,6 +1,10 @@
 import argparse
 
 
+def str2bool(s):
+    return False if s.lower() == "false" else True
+
+
 def get_opts():
     parser = argparse.ArgumentParser()
 
@@ -47,10 +51,29 @@ def get_opts():
         help="use disparity depth sampling",
     )
     parser.add_argument(
-        "--no_NDC",
+        "--ray_to_NDC",
+        default=True,
+        type=str2bool,
+        help="Convert the camera poses to the NDC? By default, False. This only affects when --spheric_poses is False",
+    )
+    parser.add_argument(
+        "--normalize_sampled_points",
         default=False,
-        action="store_true",
-        help="Convert the camera poses to the NDC? By default, True. This only affects when --spheric_poses is False",
+        type=str2bool,
+        help="Convert the camera poses to [-1, 1] range? By default, True. This only affects when --spheric_poses is False",
+    )
+    parser.add_argument(
+        "--center_3dpoints",
+        default=[-0.0028, 0.0005, -0.3630],
+        type=float,
+        nargs="+",
+        help="Center of sampled 3D points. This is used with --normalize_sampled_points set True",
+    )
+    parser.add_argument(
+        "--rays_scale_factor",
+        default=0.065,
+        type=float,
+        help="Multiplication factor to 3D points before centering to make their coordinates to be within [-1, 1]. This is used with --normalize_sampled_points set True",
     )
     parser.add_argument(
         "--perturb",

@@ -1,14 +1,14 @@
 import os, sys
 from typing import NamedTuple
-from nerf_pl.opt import get_opts
+from opt import get_opts
 import torch
 from collections import defaultdict
 
 from torch.utils.data import DataLoader
-from nerf_pl.datasets import dataset_dict
+from datasets import dataset_dict
 
 # optimizer, scheduler, visualization
-from nerf_pl.utils import *
+from utils import *
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from matplotlib.patches import FancyArrowPatch
@@ -65,7 +65,8 @@ def prepare_data(hparams):
     if hparams.dataset_name == "llff":
         kwargs["spheric_poses"] = hparams.spheric_poses
         kwargs["val_num"] = hparams.num_gpus
-        kwargs["use_NDC"] = not hparams.no_NDC
+        kwargs["use_NDC"] = hparams.ray_to_NDC
+        kwargs["normalize_sampled_points"] = hparams.normalize_sampled_points
     train_dataset = dataset(split="train", **kwargs)
     return train_dataset
 
@@ -78,7 +79,7 @@ def visual_points(ax: mplot3d.Axes3D, points: torch.Tensor, colors: np.ndarray) 
     """
     points = points.numpy()
     ax.scatter(
-        points[:, 0], points[:, 1], points[:, 2], alpha=0.3, marker="s", s=20, c=colors
+        points[:, 0], points[:, 1], points[:, 2], alpha=0.3, marker=".", s=20, c=colors
     )
 
 
@@ -110,12 +111,12 @@ def visual_rays(ax: plt.axes, rays: torch.Tensor, colors: np.ndarray = None) -> 
     near = near.numpy()
     far = far.numpy()
     # Add
-    directions = directions * (far - near)
+    directions = directions * far  # (far - near)
 
     # Plot the rays
     # Plot origins
     ax.scatter(
-        points[:, 0], points[:, 1], points[:, 2], alpha=0.5, marker="o", s=35, c=colors
+        points[:, 0], points[:, 1], points[:, 2], alpha=0.5, marker="s", s=45, c=colors
     )
     # Plot ending points
     ax.scatter(
@@ -184,9 +185,20 @@ def test_ray_sampling(hparams: NamedTuple):
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
-    plt.title(f"Rays with NDC = {not hparams.no_NDC}")
-    plt.savefig(f"assets/rays_with_NDC={not hparams.no_NDC}.png")
+    plt.autoscale(enable=False, axis="both", tight=True)
+    plt.title(
+        f"Rays with NDC = {hparams.ray_to_NDC} | normalize sampled points = {hparams.normalize_sampled_points}"
+    )
+    plt.savefig(
+        f"assets/rays_with_NDC={hparams.ray_to_NDC}_normalize_sampled_points={hparams.normalize_sampled_points}.png"
+    )
     plt.show()
+
+    if hparams.normalize_sampled_points:
+        print(f"[Info] Ray scale factor: {dataset.rays_scale_factor}")
+        print(
+            f"[Info] Center point of all 3D sampled points: {dataset.center_3dpoints}"
+        )
 
 
 if __name__ == "__main__":
@@ -196,9 +208,20 @@ if __name__ == "__main__":
     IMG_W = 640  # image width (do not set too large)
     IMG_H = 360  # image height (do not set too large)
     hparams.dataset_name = "llff"
-    hparams.no_NDC = True  # Use NDC
     hparams.root_dir = ROOT_DIR
     hparams.img_wh = (IMG_W, IMG_H)
     hparams.N_samples = 10
+    hparams.split = "val"
 
+    # # Test ray sampling with NDC
+    hparams.ray_to_NDC = True  # Use NDC
+    test_ray_sampling(hparams)
+
+    # Test ray sampling without NDC
+    hparams.ray_to_NDC = False  # NOT Use NDC
+    test_ray_sampling(hparams)
+
+    # Test ray sampling without NDC but normalize_sampled_points
+    hparams.ray_to_NDC = False  # NOT Use NDC
+    hparams.normalize_sampled_points = True
     test_ray_sampling(hparams)

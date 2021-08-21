@@ -82,7 +82,10 @@ class NeRFSystem(LightningModule):
         if self.hparams.dataset_name == "llff":
             kwargs["spheric_poses"] = self.hparams.spheric_poses
             kwargs["val_num"] = self.hparams.num_gpus
-            kwargs["use_NDC"] = not self.hparams.no_NDC
+            kwargs["normalize_sampled_points"] = self.hparams.normalize_sampled_points
+            kwargs["rays_scale_factor"] = self.hparams.rays_scale_factor
+            kwargs["center_3dpoints"] = self.hparams.center_3dpoints
+            kwargs["use_NDC"] = self.hparams.ray_to_NDC
         self.train_dataset = dataset(split="train", **kwargs)
         self.val_dataset = dataset(split="val", **kwargs)
 
