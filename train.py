@@ -161,10 +161,11 @@ class NeRFSystem(LightningModule):
     def validation_epoch_end(self, outputs):
         mean_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         mean_psnr = torch.stack([x["val_psnr"] for x in outputs]).mean()
-
+        self.log("val_epoch_loss", mean_loss)
+        self.log("val_epoch_psnr", mean_psnr)
         return {
-            "progress_bar": {"val_loss": mean_loss, "val_psnr": mean_psnr},
-            "log": {"val/loss": mean_loss, "val/psnr": mean_psnr},
+            "progress_bar": {"val_epoch_loss": mean_loss, "val_epoch_psnr": mean_psnr},
+            "log": {"val/epoch_loss": mean_loss, "val/epoch_psnr": mean_psnr},
         }
 
 
@@ -172,8 +173,9 @@ if __name__ == "__main__":
     hparams = get_opts()
     system = NeRFSystem(hparams)
     checkpoint_callback = ModelCheckpoint(
-        dirpath=os.path.join(f"ckpts/{hparams.exp_name}", "{epoch:d}"),
-        monitor="val/loss",
+        dirpath=f"ckpts/{hparams.exp_name}",
+        filename="{epoch:02d}",
+        monitor="val_epoch_loss",
         mode="min",
         save_top_k=5,
     )
@@ -198,3 +200,4 @@ if __name__ == "__main__":
     )
 
     trainer.fit(system)
+    trainer.best_model_path
