@@ -58,7 +58,6 @@ class CustomLLFFDataset(LLFFDataset):
                                             'poses_bounds.npy')) # (N_images, 17)
 
         self.image_names = [name.split('/')[-1] for name in self.image_paths]
-
         image_names_file = os.path.join(self.root_dir,
                     'image_names_corresponding_to_poses_bounds.txt')
         if os.path.exists(image_names_file):
@@ -146,6 +145,10 @@ class CustomLLFFDataset(LLFFDataset):
             # plt.imshow(depth, cmap="jet")
             # plt.show()
             glCam2W_T = poses[i]
+
+            # Scale the transition values (0.307 values is specific to the room_0_array dataset).
+            glCam2W_T[:3,3] *= 0.307
+
             glCam2W_T = np.vstack([glCam2W_T, np.array([0,0,0,1])])
 
             # Point cloud. Note that we cannot use Open3D pcl from RGBD anymore because our camera now is
@@ -155,7 +158,7 @@ class CustomLLFFDataset(LLFFDataset):
 
             # Camera pose
             o3d_cam_pose = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.15/depth_scale_factor)
-
+            # o3d.visualization.draw_geometries([o3d_rgbd_pcl, o3d_cam_pose])
             # Transform to the world
             print(f"[Info] Transform from OpenGL cam to world:\n {glCam2W_T}")
             o3d_rgbd_pcl.transform(glCam2W_T)
@@ -186,7 +189,7 @@ tests_dict = {  "step_2": test_step2_in_LLFFDataset,
 
 def main():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--data_root", default="data/replica/room_0")
+    argparser.add_argument("--data_root", default="data/replica/room_0_array")
     argparser.add_argument("--img_wh", nargs="+", type=int, default=[1280, 720])
     argparser.add_argument('--spheric_poses', default=False, action="store_true",
                         help='whether images are taken in spheric poses (for llff)')

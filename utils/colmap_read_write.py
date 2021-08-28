@@ -7,7 +7,6 @@
 import os, cv2, glob
 import collections
 from numpy.linalg.linalg import _fastCopyAndTranspose
-from skimage.filters.edges import farid
 
 import soundfile
 import numpy as np
